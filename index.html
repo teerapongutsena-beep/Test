@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>English Learner - Hand Gesture Game</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js" crossorigin="anonymous"></script>
+    <style>
+        body { margin: 0; display: flex; flex-direction: column; align-items: center; background: #2c3e50; color: white; font-family: 'Arial', sans-serif; }
+        canvas { border-radius: 15px; margin-top: 20px; cursor: none; }
+        .info { margin-top: 10px; font-size: 20px; }
+    </style>
+</head>
+<body>
+
+<div class="info">ใช้ปลายนิ้วชี้ไปยังคำตอบที่ถูกต้อง!</div>
+
+<script>
+    let video, handLandmarker;
+    let handData = null;
+    let score = 0, currentIdx = 0;
+    let hoverTarget = -1, hoverStartTime = 0;
+    const HOVER_TIME = 1500; // ลดเวลาเหลือ 1.5 วินาทีเพื่อให้เล่นสนุกขึ้น
+
+    const questions = [
+        { q: "I want to eat ____.", options: ["apple", "car", "book"], correct: "apple" },
+        { q: "The ____ is barking.", options: ["cat", "dog", "bird"], correct: "dog" },
+        { q: "We wear shoes on our ____.", options: ["hands", "feet", "eyes"], correct: "feet" }
+    ];
+
+    async function setup() {
+        createCanvas(800, 600);
+        video = createCapture(VIDEO);
+        video.size(800, 600);
+        video.hide();
+
+        const { FilesetResolver, HandLandmarker } = vision;
+        const visionFileset = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm");
+        handLandmarker = await HandLandmarker.createFromOptions(visionFileset, {
+            baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task" },
+            numHands: 1, runningMode: "VIDEO"
+        });
+    }
+
+    function draw() {
+        translate(width, 0); scale(-1, 1);
+        image(video, 0, 0, width, height);
+        
+        detectHands();
+        
+        // UI Layer
+        push();
+        scale(-1, 1); translate(-width, 0);
+        
+        // โจทย์
+        fill(255, 255, 255, 200); rect(50, 50, 700, 100, 20);
+        fill(0); textSize(40); textAlign(CENTER);
+        text(questions[currentIdx].q, 400, 115);
+        
+        // คะแนน
+        textSize(24); text("Score: " + score, 700, 40);
+
+        // วาดตัวเลือก
+        let options = questions[currentIdx].options;
+        let isHovering = false;
+
+        for (let i = 0; i < options.length; i++) {
+            let x = 100 + (i * 220), y = 350, w = 200, h = 100;
+            
+            // วาดปุ่ม
+            fill(255); stroke(0); strokeWeight(3);
+            rect(x, y, w, h, 20);
+            fill(0); textSize(30); text(options[i], x + 100, y + 60);
+
+            // ตรวจจับนิ้ว
+            if (handData) {
+                let hx = (1 - handData.x) * width;
+                let hy = handData.y * height;
+                
+                // วาด Cursor ปลายนิ้ว
+                fill(255, 50, 50); noStroke(); ellipse(hx, hy, 25, 25);
+
+                if (hx > x && hx < x + w && hy > y && hy < y + h) {
+                    isHovering = true;
+                    if (hoverTarget !== i) { hoverTarget = i; hoverStartTime = millis(); }
+                    
+                    // แถบโหลด
+                    let p = constrain((millis() - hoverStartTime) / HOVER_TIME, 0, 1);
+                    fill(46, 204, 113, 150); rect(x, y, w * p, h, 20);
+                    
+                    if (p >= 1) {
+                        checkAnswer(options[i]);
+                        hoverTarget = -1;
+                    }
+                }
+            }
+        }
+        if (!isHovering) hoverTarget = -1;
+        pop();
+    }
+
+    async function detectHands() {
+        if (!handLandmarker) return;
+        const results = await handLandmarker.detectForVideo(video.elt, performance.now());
+        if (results.landmarks.length > 0) handData = results.landmarks[0][8];
+        else handData = null;
+    }
+
+    function checkAnswer(ans) {
+        if (ans === questions[currentIdx].correct) {
+            score++;
+            currentIdx = (currentIdx + 1) % questions.length;
+        } else {
+            // สั่นสะเทือนหรือแสดง Error เล็กน้อยได้ตรงนี้
+        }
+    }
+</script>
+</body>
+</html>
